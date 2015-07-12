@@ -133,6 +133,9 @@ function pushMessage(nick, text, time, cls) {
 	if (cls) {
 		messageEl.classList.add(cls)
 	}
+	if (mentioned(text, nick)) {
+		messageEl.classList.add('mentioned')
+	}
 
 	var nickEl = document.createElement('span')
 	nickEl.classList.add('nick')
@@ -171,6 +174,17 @@ function pushMessage(nick, text, time, cls) {
 
 	unread += 1
 	updateTitle()
+}
+
+
+function mentioned(text, nick) {
+	var pattern = "@"+nick
+	return text.replace(/[_=&\/\\#,+()$~%.'":*!?<>{}]/g, '')
+		.split(/\s/)
+		.filter(function(word) {
+			return word === pattern;
+		})
+		.length > 0;
 }
 
 

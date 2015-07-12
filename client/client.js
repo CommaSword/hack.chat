@@ -133,7 +133,7 @@ function pushMessage(nick, text, time, cls) {
 	if (cls) {
 		messageEl.classList.add(cls)
 	}
-	if (mentioned(text, nick)) {
+	if (wasMentioned(text, nick)) {
 		messageEl.classList.add('mentioned')
 	}
 
@@ -177,7 +177,7 @@ function pushMessage(nick, text, time, cls) {
 }
 
 
-function mentioned(text, nick) {
+function wasMentioned(text, nick) {
 	var pattern = "@"+nick
 	return text.replace(/[_=&\/\\#,+()$~%.'":*!?<>{}]/g, '')
 		.split(/\s/)

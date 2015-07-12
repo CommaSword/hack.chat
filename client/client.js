@@ -133,7 +133,7 @@ function pushMessage(nick, text, time, cls) {
 	if (cls) {
 		messageEl.classList.add(cls)
 	}
-	if (wasMentioned(text, nick)) {
+	if (wasMentioned(text, myNick)) {
 		messageEl.classList.add('mentioned')
 	}
 

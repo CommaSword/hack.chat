@@ -92,11 +92,28 @@ function getAddress(client) {
 }
 
 function hash(password) {
+	var tripCodeChrs = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789~!@#$%^&*()_+-=';/.,<>?:|\\\"][`{}"
+	var tripCodeLen = 6
+	var tripCode = []
 	var sha = crypto.createHash('sha256')
+	var hashCode
+	var index = 0
+	var tpChar
 	sha.update(password + config.salt)
-	return sha.digest('base64').substr(0, 6)
+	hashCode = sha.digest()
+	for (i = 0; i < hashCode.length; i++) {
+		tripCode[index] += ((hashCode[i].charCodeAt(0)*i)*i)
+		index++
+		if (index == tripCodeLen) {
+			index = 0
+		}
+	}
+	for (k = 0; k < tripCodeLen; k++) {
+		tpChar = tripCode[k] % tripCodeChrs.length
+		tripCode[k] = tripCodeChrs[tpChar]
+	}
+	return tripCode.join("")
 }
-
 
 // `this` bound to client
 var COMMANDS = {

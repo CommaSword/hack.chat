@@ -1,9 +1,10 @@
 /* jshint asi: true */
 /* jshint esnext: true */
 
-var fs = require('fs')
-var ws = require('ws')
-var crypto = require('crypto')
+var fs = require('fs'),
+    ws = require('ws'),
+    crypto = require('crypto'),
+    byline = require('byline');
 
 
 var config = {}
@@ -136,6 +137,104 @@ var COMMANDS = {
 		// Don't do anything
 	},
 
+        // method: scrollback
+        // purpose: managing chat scrollback for channels
+        // args: Object
+        // properties:
+        //   - mode: str : read OR write OR purge : no default
+        scrollback: function(args) {
+            var args = args || {};
+            if( !args.mode ) {
+                console.warn("scrollback: mode required!");
+                return;
+            }
+
+            // Set some parent-level vars for easy nested function access
+            var config = config.scrollback;
+            var persistence = config.persistence || 0;
+            var method = config.method || "file";
+            var methodObj = config[method] || {};
+            var location = methodObj.location || "scrollback.txt";
+
+            // Require certain settings for datastores
+            if (method == 'datastore') {
+                if (!methodObj.type ||
+                    !methodObj.user ||
+                    !methodObj.pass ||
+                    !methodObj.dataset
+                   ) { console.warn("scrollback: datastores req options!"); }
+                console.warn("scrollback: Datastore not implemented yet");
+            }
+
+            // Entrypoint: Each mode is object with methods for each... method
+            switch(args.mode) {
+                case "read":
+                    read[method];
+                case "write":
+                    write[method];
+                case "purge":
+                    purge[method];
+            }
+
+            var read = {},
+                write = {},
+                purge = {};
+
+            read.file = function() {
+                // Create by-line stream to process logs
+                // Each log is a simple object with:
+                //     time, channel, nick, text
+                var lines = 0;
+                var stream = fs.createReadStream(location);
+                stream = byline.createStream(stream);
+                stream
+                    .on('data', function(buf) {
+                        var logObj = JSON.parse(buf.toString()),
+                            time = logObj.time,
+                            channel = logObj.channel,
+                            nick = logObj.nick,
+                            text = logObj.text,
+                            data = {cmd: 'chat', nick: nick, text: text};
+                        if (channel == channel) {
+                            lines++;
+                            send(data, this);
+                        }
+                    })
+                    .on('end', function() {
+                        // Send a message from System with status of backlog
+                        var end = "=== End of backlog (" +lines+ " lines) ===";
+                        send({ cmd: 'info', text: end}, this);
+                    });
+            }
+
+            read.datastore = function() {
+                return;
+            }
+
+            write.file = function() {
+                if (!args.chat) { return; }
+                var log = args.chat;
+                log.time = new Date(Date.now());
+                log.channel = this.channel;
+                var logStr = JSON.stringify(log);
+                var stream = fs.createWriteStream(location, {flags: 'a'});
+                stream.end(logStr);
+            }
+
+            write.datastore = function() {
+                return;
+            }
+
+            purge.file = function() {
+                return;
+            }
+
+            purge.datastore = function() {
+                return;
+            }
+
+        },
+
 	join: function(args) {
 		var channel = String(args.channel)
 		var nick = String(args.nick)
@@ -201,7 +300,17 @@ var COMMANDS = {
 				nicks.push(client.nick)
 			}
 		}
-		send({cmd: 'onlineSet', nicks: nicks}, this)
+		send({cmd: 'onlineSet', nicks: nicks}, this);
+                // Scrollback functions if enabled
+                if (config.scrollback) {
+                    // Check if current channel is allowed to log chat
+                    var disabledOn = config.scrollback.disabledOn || []
+                    var enabled = disabledOn.indexOf(this.channel) == -1;
+
+                    if (enabled) {
+                        this.scrollback( {mode: "read"} );
+                    }
+                }
 	},
 
 	chat: function(args) {
@@ -231,7 +340,8 @@ var COMMANDS = {
 		if (this.trip) {
 			data.trip = this.trip
 		}
-		broadcast(data, this.channel)
+		broadcast(data, this.channel);
+                this.scrollback( {mode: "write", chat: data} );
 	},
 
 	invite: function(args) {

@@ -4,7 +4,10 @@
 var fs = require('fs'),
     ws = require('ws'),
     crypto = require('crypto'),
-    byline = require('byline');
+    byline = require('byline'),
+    stream = require('stream'),
+    util = require('util'),
+    Transform = stream.Transform || require('readable-stream').Transform;
 
 
 var config = {}
@@ -529,3 +532,49 @@ var POLICE = {
 }
 
 POLICE.loadJail('jail.txt')
+
+
+// Add Transform stream for filtering through dated logs
+function TruncateDates(p1, p2, options) {
+    // Truncate messages by date
+    // Filters out everything between p1 and p2.
+    // If only p1 is provided, everything will be filtered before that time
+    //
+    // Both p1 and p2 must be Date() objects.
+    if (!(this instanceof TruncateDates)) {
+        return new TruncateDates(options);
+    }
+
+    this.p1 = p1;
+    if (p2) { this.p2 = p2; }
+
+    // init Transform
+    Transform.call(this, options);
+}
+
+// Inherit from Transform
+util.inherits(TruncateDates, Transform);
+
+TruncateDates.prototype._transform = function (chunk, enc, cb) {
+    var obj = JSON.parse(chunk.toString()),
+        datetime = new Date(obj.time);
+    
+    if (this.p2) {
+
+        // If date ISN'T between p1 and p2, go ahead and push the chunk
+        if !(datetime > this.p1 && datetime < this.p2) {
+            this.push(chunk.toString(), enc);
+            cb();
+        }
+
+    } else {
+
+        // If date ISN'T prior to p1, go ahead and push the chunk
+        if !(datetime < this.p1) {
+            this.push(chunk.toString(), enc);
+            cb();
+        }
+
+    }
+
+};

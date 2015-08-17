@@ -25,6 +25,7 @@ fs.watchFile(configFilename, {persistent: false}, function() {
 	loadConfig(configFilename)
 })
 
+function returnConfig() { return config; }
 
 var server = new ws.Server({host: config.host, port: config.port})
 console.log("Started server on " + config.host + ":" + config.port)
@@ -211,7 +212,7 @@ var COMMANDS = {
                     var enabled = disabledOn.indexOf(this.channel) == -1;
 
                     if (enabled) {
-                        this.scrollback( {mode: "read"} );
+                        COMMANDS.scrollback( {mode: "read", nick: this.nick} );
                     }
                 }
 	},
@@ -244,7 +245,7 @@ var COMMANDS = {
 			data.trip = this.trip
 		}
 		broadcast(data, this.channel);
-                this.scrollback( {mode: "write", chat: data} );
+                COMMANDS.scrollback( {mode: "write", chat: data} );
 	},
 
 	invite: function(args) {
@@ -369,11 +370,13 @@ COMMANDS.scrollback = function(args) {
     }
 
     // Set some parent-level vars for easy nested function access
-    var config = config.scrollback;
+    var mode = args.mode;
+    var config = returnConfig().scrollback;
     var persistence = config.persistence || 0;
     var method = config.method || "file";
     var methodObj = config[method] || {};
     var location = methodObj.location || "scrollback.txt";
+    console.info('scrollback: ' + location + '\nMode: ' + mode + '\n');
 
     // Require certain settings for datastores
     if (method == 'datastore') {
@@ -385,14 +388,14 @@ COMMANDS.scrollback = function(args) {
         console.warn("scrollback: Datastore not implemented yet");
     }
 
-    // Entrypoint: Each mode is object with methods for each... method
-    switch(args.mode) {
-        case "read":
-            read[method];
-        case "write":
-            write[method];
-        case "purge":
-            purge[method];
+    function broadcastToClient(data, channel, nick) {
+        for (var client of server.clients) {
+            if (client.nick == nick) {
+                if (channel ? client.channel === channel : client.channel) {
+                    send(data, client)
+                }
+            }
+        }
     }
 
     var read = {},
@@ -416,13 +419,14 @@ COMMANDS.scrollback = function(args) {
                     data = {cmd: 'chat', nick: nick, text: text};
                 if (channel == channel) {
                     lines++;
-                    send(data, this);
+                    broadcastToClient(data, this.channel, args.nick);
                 }
             })
             .on('end', function() {
                 // Send a message from System with status of backlog
                 var end = "=== End of backlog (" +lines+ " lines) ===";
-                send({ cmd: 'info', text: end}, this);
+                var data = {cmd: 'info', text: end};
+                broadcastToClient(data, this.channel, args.nick);
             });
     }
 
@@ -435,7 +439,7 @@ COMMANDS.scrollback = function(args) {
         var log = args.chat;
         log.time = new Date(Date.now());
         log.channel = this.channel;
-        var logStr = JSON.stringify(log);
+        var logStr = JSON.stringify(log) + '\n';
         var stream = fs.createWriteStream(location, {flags: 'a'});
         stream.end(logStr);
     }
@@ -450,6 +454,19 @@ COMMANDS.scrollback = function(args) {
 
     purge.datastore = function() {
         return;
+    }
+
+    // Entrypoint: Each mode is object with methods for each... method
+    switch(mode) {
+        case "read":
+            read[method]();
+            break;
+        case "write":
+            write[method]();
+            break;
+        case "purge":
+            purge[method]();
+            break;
     }
 }
 

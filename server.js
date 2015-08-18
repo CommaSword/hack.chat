@@ -215,7 +215,11 @@ var COMMANDS = {
                     var enabled = disabledOn.indexOf(this.channel) == -1;
 
                     if (enabled) {
-                        COMMANDS.scrollback( {mode: "read", nick: this.nick} );
+                        COMMANDS.scrollback({
+                            mode: "read",
+                            nick: this.nick,
+                            channel: this.channel
+                        });
                     }
                 }
 	},
@@ -248,7 +252,12 @@ var COMMANDS = {
 			data.trip = this.trip
 		}
 		broadcast(data, this.channel);
-                COMMANDS.scrollback( {mode: "write", chat: data} );
+                COMMANDS.scrollback({
+                    mode: "write",
+                    nick: this.nick,
+                    channel: this.channel,
+                    chat: data,
+                });
 	},
 
 	invite: function(args) {
@@ -409,6 +418,16 @@ COMMANDS.scrollback = function(args) {
         // Create by-line stream to process logs
         // Each log is a simple object with:
         //     time, channel, nick, text
+        
+        // Test if file exists, create it if not
+        fs.stat(location, function(err, stat) {
+            if(err == null) { return; }
+            else if(err.code == 'ENOENT') {
+                fs.writeFile(location, '');
+            } else {
+                console.warn('Some error creating ' + location);
+            }
+        });
         var lines = 0;
         var stream = fs.createReadStream(location);
         stream = byline.createStream(stream);
@@ -420,16 +439,16 @@ COMMANDS.scrollback = function(args) {
                     nick = logObj.nick,
                     text = logObj.text,
                     data = {cmd: 'chat', nick: nick, text: text};
-                if (channel == channel) {
+                if (channel == args.channel) {
                     lines++;
-                    broadcastToClient(data, this.channel, args.nick);
+                    broadcastToClient(data, args.channel, args.nick);
                 }
             })
             .on('end', function() {
                 // Send a message from System with status of backlog
                 var end = "=== End of backlog (" +lines+ " lines) ===";
                 var data = {cmd: 'info', text: end};
-                broadcastToClient(data, this.channel, args.nick);
+                broadcastToClient(data, args.channel, args.nick);
             });
     }
 
@@ -441,7 +460,7 @@ COMMANDS.scrollback = function(args) {
         if (!args.chat) { return; }
         var log = args.chat;
         log.time = new Date(Date.now());
-        log.channel = this.channel;
+        log.channel = args.channel;
         var logStr = JSON.stringify(log) + '\n';
         var stream = fs.createWriteStream(location, {flags: 'a'});
         stream.end(logStr);
@@ -562,7 +581,7 @@ TruncateDates.prototype._transform = function (chunk, enc, cb) {
     if (this.p2) {
 
         // If date ISN'T between p1 and p2, go ahead and push the chunk
-        if !(datetime > this.p1 && datetime < this.p2) {
+        if (!(datetime > this.p1 && datetime < this.p2)) {
             this.push(chunk.toString(), enc);
             cb();
         }
@@ -570,7 +589,7 @@ TruncateDates.prototype._transform = function (chunk, enc, cb) {
     } else {
 
         // If date ISN'T prior to p1, go ahead and push the chunk
-        if !(datetime < this.p1) {
+        if (!(datetime < this.p1)) {
             this.push(chunk.toString(), enc);
             cb();
         }

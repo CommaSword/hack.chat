@@ -409,7 +409,6 @@ COMMANDS.scrollback = function(args) {
             }
         }
     }
-
     var read = {},
         write = {},
         purge = {};
@@ -418,18 +417,10 @@ COMMANDS.scrollback = function(args) {
         // Create by-line stream to process logs
         // Each log is a simple object with:
         //     time, channel, nick, text
-        
-        // Test if file exists, create it if not
-        fs.stat(location, function(err, stat) {
-            if(err == null) { return; }
-            else if(err.code == 'ENOENT') {
-                fs.writeFile(location, '');
-            } else {
-                console.warn('Some error creating ' + location);
-            }
-        });
         var lines = 0;
+        fs.writeFile(location, '');
         var stream = fs.createReadStream(location);
+
         stream = byline.createStream(stream);
         stream
             .on('data', function(buf) {

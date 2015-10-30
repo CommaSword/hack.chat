@@ -25,6 +25,9 @@
   },
   "homepage": "https://github.com/AndrewBelt/hack.chat",
   "dependencies": {
+    "http-server": "^0.8.5",
+    "jade": "^1.11.0",
+    "less": "^2.5.3",
     "ws": "^0.7.2"
   },
   "engines": {

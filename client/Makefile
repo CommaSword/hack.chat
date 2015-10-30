@@ -6,13 +6,13 @@ build: $(SCHEMES) index.html style.css
 
 schemes/%.css: scheme.less
 	mkdir -p schemes
-	lessc --global-var='name=$*' $^ > $@
+	../node_modules/.bin/lessc --global-var='name=$*' $^ > $@
 
 %.css: %.less
-	lessc $^ > $@
+	../node_modules/.bin/lessc $^ > $@
 
 %.html: %.jade
-	jade $^
+	../node_modules/.bin/jade $^
 
 clean:
 	rm -fv schemes/*.css index.html style.css

@@ -49,6 +49,10 @@ var myNick = localStorageGet('my-nick')
 var myChannel = window.location.search.replace(/^\?/, '')
 var lastSent = [""]
 var lastSentPos = 0
+var myIgnores = []
+
+var ignoreTitle = ['Ignore this user', 'Accept messages from this user']
+var ignoreLabel = ['I', 'A']
 
 
 // Ping server every 50 seconds to retain WebSocket connection
@@ -103,7 +107,9 @@ var COMMANDS = {
 		if (ignoredUsers.indexOf(args.nick) >= 0) {
 			return
 		}
-		pushMessage(args)
+		if (myIgnores.indexOf(args.nick) == -1) {
+			pushMessage(args)
+		}
 	},
 	info: function(args) {
 		args.nick = '*'
@@ -131,6 +137,7 @@ var COMMANDS = {
 	onlineRemove: function(args) {
 		var nick = args.nick
 		userRemove(nick)
+		userUnignore(nick)
 		if ($('#joined-left').checked) {
 			pushMessage({nick: '*', text: nick + " left"})
 		}
@@ -428,16 +435,47 @@ $('#parse-latex').onchange = function(e) {
 var onlineUsers = []
 var ignoredUsers = []
 
+function getIgnoreLabel(nick) {
+	return myIgnores.indexOf(nick)==-1 ? ignoreLabel[0] : ignoreLabel[1];
+}
+
+function getIgnoreTitle(nick) {
+	return myIgnores.indexOf(nick)==-1 ? ignoreTitle[0] : ignoreTitle[1];
+}
+
 function userAdd(nick) {
 	var user = document.createElement('a')
 	user.textContent = nick
 	user.onclick = function(e) {
 		userInvite(nick)
 	}
+
+	var ignore = document.createElement('a')
+	ignore.textContent = getIgnoreLabel(nick)
+	ignore.title = getIgnoreTitle(nick)
+	ignore.style.float = 'right'
+	ignore.onclick = function() { userIgnore(ignore, nick); }
+
 	var userLi = document.createElement('li')
 	userLi.appendChild(user)
+	userLi.appendChild(ignore)
 	$('#users').appendChild(userLi)
 	onlineUsers.push(nick)
+}
+
+function userUnignore(nick) {
+	myIgnores.splice(myIgnores.indexOf(nick), 1)
+}
+
+function userIgnore(me, nick) {
+	var index = myIgnores.indexOf(nick)
+	if (index == -1) {
+		myIgnores.push(nick)
+	} else {
+		myIgnores.splice(index, 1)
+	}
+	me.textContent = getIgnoreLabel(nick);
+	me.title = getIgnoreTitle(nick);
 }
 
 function userRemove(nick) {
@@ -445,7 +483,7 @@ function userRemove(nick) {
 	var children = users.children
 	for (var i = 0; i < children.length; i++) {
 		var user = children[i]
-		if (user.textContent == nick) {
+		if (user.children[0].textContent == nick) {
 			users.removeChild(user)
 		}
 	}

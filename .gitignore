@@ -1,3 +1,6 @@
 node_modules/
-npm-debug.log
-config.json
+*.log
+*.iml
+.idea/
+*.ipr
+*.iws

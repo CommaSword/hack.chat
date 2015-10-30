@@ -9,16 +9,16 @@ var frontpage = [
 	"Channels are created and joined by going to https://hack.chat/?your-channel. There are no channel lists, so a secret channel name can be used for private discussions.",
 	"",
 	"Here are some pre-made channels you can join:",
-	"?lounge ?meta",
-	"?math ?physics ?chemistry",
+	"?lobby ?meta ?random",
 	"?technology ?programming",
-	"?games ?banana",
+	"?math ?physics ?asciiart",
 	"And here's a random one generated just for you: ?" + Math.random().toString(36).substr(2, 8),
 	"",
 	"",
 	"Formatting:",
 	"Whitespace is preserved, so source code can be pasted verbatim.",
-	"Surround LaTeX with a dollar sign for inline style $\\zeta(2) = \\pi^2/6$, and two dollars for display. $$\\int_0^1 \\int_0^1 \\frac{1}{1-xy} dx dy = \\frac{\\pi^2}{6}$$",
+	"Surround LaTeX with a dollar sign for inline style $\\zeta(2) = \\pi^2/6$, and two dollars for display.",
+	"$$\\int_0^1 \\int_0^1 \\frac{1}{1-xy} dx dy = \\frac{\\pi^2}{6}$$",
 	"",
 	"GitHub: https://github.com/AndrewBelt/hack.chat",
 	"Android apps: https://goo.gl/UkbKYy https://goo.gl/qasdSu",
@@ -164,6 +164,9 @@ function pushMessage(args) {
 	else if (args.text && args.text.indexOf("@" + myNick.split("#")[0] + " ") != -1) {
 		messageEl.classList.add('direct')
 	}
+	if (wasMentioned(args.text, myNick)) {
+		messageEl.classList.add('mentioned')
+	}
 
 	// Nickname
 	var nickSpanEl = document.createElement('span')
@@ -221,6 +224,17 @@ function pushMessage(args) {
 
 	unread += 1
 	updateTitle()
+}
+
+
+function wasMentioned(text, nick) {
+	var pattern = "@"+nick
+	return text.replace(/[_=&\/\\#,+()$~%.'":*!?<>{}]/g, '')
+		.split(/\s/)
+		.filter(function(word) {
+			return word === pattern;
+		})
+		.length > 0;
 }
 
 

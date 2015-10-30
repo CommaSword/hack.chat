@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "postinstall": "(cd client; make)",
+    "start": "concurrent -k \"node server.js\" \"http-server ./client -o\""
   },
   "repository": {
     "type": "git",
@@ -25,11 +26,12 @@
   },
   "homepage": "https://github.com/AndrewBelt/hack.chat",
   "dependencies": {
+    "byline": "^4.2.1",
+    "concurrently": "^0.1.1",
     "http-server": "^0.8.5",
     "jade": "^1.11.0",
     "less": "^2.5.3",
-    "ws": "^0.7.2",
-    "byline": ">3.0.0"
+    "ws": "^0.7.2"
   },
   "engines": {
     "node": ">=0.12.0"

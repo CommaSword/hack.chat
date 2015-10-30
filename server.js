@@ -1,9 +1,13 @@
 /* jshint asi: true */
 /* jshint esnext: true */
 
-var fs = require('fs');
-var ws = require('ws');
-var crypto = require('crypto');
+var fs = require('fs'),
+	ws = require('ws'),
+	crypto = require('crypto'),
+	byline = require('byline'),
+	stream = require('stream'),
+	util = require('util'),
+	Transform = stream.Transform || require('readable-stream').Transform;
 
 
 var config = {};
@@ -24,6 +28,7 @@ fs.watchFile(configFilename, {persistent: false}, function() {
 	loadConfig(configFilename)
 });
 
+function returnConfig() { return config; }
 
 var server = new ws.Server({host: config.host, port: config.port});
 console.log("Started server on " + config.host + ":" + config.port);
@@ -81,8 +86,8 @@ function send(data, client) {
 }
 
 /** Sends data to all clients
-channel: if not null, restricts broadcast to clients in the channel
-*/
+ channel: if not null, restricts broadcast to clients in the channel
+ */
 function broadcast(data, channel) {
 	for (var client of server.clients) {
 		if (channel ? client.channel === channel : client.channel) {
@@ -201,6 +206,20 @@ var COMMANDS = {
 			}
 		}
 		send({cmd: 'onlineSet', nicks: nicks}, this);
+		// Scrollback functions if enabled
+		if (config.scrollback) {
+			// Check if current channel is allowed to log chat
+			var disabledOn = config.scrollback.disabledOn || [];
+			var enabled = disabledOn.indexOf(this.channel) == -1;
+
+			if (enabled) {
+				COMMANDS.scrollback({
+					mode: "read",
+					nick: this.nick,
+					channel: this.channel
+				});
+			}
+		}
 	},
 
 	chat: function(args) {
@@ -231,6 +250,12 @@ var COMMANDS = {
 			data.trip = this.trip;
 		}
 		broadcast(data, this.channel);
+		COMMANDS.scrollback({
+			mode: "write",
+			nick: this.nick,
+			channel: this.channel,
+			chat: data,
+		});
 	},
 
 	invite: function(args) {
@@ -342,6 +367,120 @@ var COMMANDS = {
 	},
 };
 
+COMMANDS.scrollback = function(args) {
+	// method: scrollback
+	// purpose: managing chat scrollback for channels
+	// args: Object
+	// properties:
+	//   - mode: str : read OR write OR purge : no default
+	var args = args || {};
+	if( !args.mode ) {
+		console.warn("scrollback: mode required!");
+		return;
+	}
+
+	// Set some parent-level vars for easy nested function access
+	var mode = args.mode;
+	var config = returnConfig().scrollback;
+	var persistence = config.persistence || 0;
+	var method = config.method || "file";
+	var methodObj = config[method] || {};
+	var location = methodObj.location || "scrollback.txt";
+	console.info('scrollback: ' + location + '\nMode: ' + mode + '\n');
+
+	// Require certain settings for datastores
+	if (method == 'datastore') {
+		if (!methodObj.type ||
+			!methodObj.user ||
+			!methodObj.pass ||
+			!methodObj.dataset
+		) { console.warn("scrollback: datastores req options!"); }
+		console.warn("scrollback: Datastore not implemented yet");
+	}
+
+	function broadcastToClient(data, channel, nick) {
+		for (var client of server.clients) {
+			if (client.nick == nick) {
+				if (channel ? client.channel === channel : client.channel) {
+					send(data, client)
+				}
+			}
+		}
+	}
+	var read = {},
+		write = {},
+		purge = {};
+
+	read.file = function() {
+		// Create by-line stream to process logs
+		// Each log is a simple object with:
+		//     time, channel, nick, text
+		var lines = 0;
+		fs.writeFile(location, '');
+		var stream = fs.createReadStream(location);
+
+		stream = byline.createStream(stream);
+		stream
+			.on('data', function(buf) {
+				var logObj = JSON.parse(buf.toString()),
+					time = logObj.time,
+					channel = logObj.channel,
+					nick = logObj.nick,
+					text = logObj.text,
+					data = {cmd: 'chat', nick: nick, text: text};
+				if (channel == args.channel) {
+					lines++;
+					broadcastToClient(data, args.channel, args.nick);
+				}
+			})
+			.on('end', function() {
+				// Send a message from System with status of backlog
+				var end = "=== End of backlog (" +lines+ " lines) ===";
+				var data = {cmd: 'info', text: end};
+				broadcastToClient(data, args.channel, args.nick);
+			});
+	}
+
+	read.datastore = function() {
+		return;
+	}
+
+	write.file = function() {
+		if (!args.chat) { return; }
+		var log = args.chat;
+		log.time = new Date(Date.now());
+		log.channel = args.channel;
+		var logStr = JSON.stringify(log) + '\n';
+		var stream = fs.createWriteStream(location, {flags: 'a'});
+		stream.end(logStr);
+	}
+
+	write.datastore = function() {
+		return;
+	}
+
+	purge.file = function() {
+		return;
+	}
+
+	purge.datastore = function() {
+		return;
+	}
+
+	// Entrypoint: Each mode is object with methods for each... method
+	switch(mode) {
+		case "read":
+			read[method]();
+			break;
+		case "write":
+			write[method]();
+			break;
+		case "purge":
+			purge[method]();
+			break;
+	}
+}
+
 
 // rate limiter
 var POLICE = {
@@ -401,3 +540,49 @@ var POLICE = {
 }
 
 POLICE.loadJail('jail.txt');
+
+
+// Add Transform stream for filtering through dated logs
+function TruncateDates(p1, p2, options) {
+	// Truncate messages by date
+	// Filters out everything between p1 and p2.
+	// If only p1 is provided, everything will be filtered before that time
+	//
+	// Both p1 and p2 must be Date() objects.
+	if (!(this instanceof TruncateDates)) {
+		return new TruncateDates(options);
+	}
+
+	this.p1 = p1;
+	if (p2) { this.p2 = p2; }
+
+	// init Transform
+	Transform.call(this, options);
+}
+
+// Inherit from Transform
+util.inherits(TruncateDates, Transform);
+
+TruncateDates.prototype._transform = function (chunk, enc, cb) {
+	var obj = JSON.parse(chunk.toString()),
+		datetime = new Date(obj.time);
+
+	if (this.p2) {
+
+		// If date ISN'T between p1 and p2, go ahead and push the chunk
+		if (!(datetime > this.p1 && datetime < this.p2)) {
+			this.push(chunk.toString(), enc);
+			cb();
+		}
+
+	} else {
+
+		// If date ISN'T prior to p1, go ahead and push the chunk
+		if (!(datetime < this.p1)) {
+			this.push(chunk.toString(), enc);
+			cb();
+		}
+
+	}
+
+};

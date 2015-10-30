@@ -6,7 +6,7 @@
 
 node v0.12 or higher is required to run the server.
 
-* `git clone https://github.com/AndrewBelt/hack.chat.git`
+* `git clone git@github.com:CommaSword/hack.chat.git`
 * `cd hack.chat`
 * `npm install`
 * Copy `config-sample.json` to `config.json` and edit if needed. (the client expects the server to run at port 6060)

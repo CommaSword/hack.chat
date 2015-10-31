@@ -9,16 +9,16 @@ var frontpage = [
 	"Channels are created and joined by going to https://hack.chat/?your-channel. There are no channel lists, so a secret channel name can be used for private discussions.",
 	"",
 	"Here are some pre-made channels you can join:",
-	"?lounge ?meta",
-	"?math ?physics ?chemistry",
+	"?lobby ?meta ?random",
 	"?technology ?programming",
-	"?games ?banana",
+	"?math ?physics ?asciiart",
 	"And here's a random one generated just for you: ?" + Math.random().toString(36).substr(2, 8),
 	"",
 	"",
 	"Formatting:",
 	"Whitespace is preserved, so source code can be pasted verbatim.",
-	"Surround LaTeX with a dollar sign for inline style $\\zeta(2) = \\pi^2/6$, and two dollars for display. $$\\int_0^1 \\int_0^1 \\frac{1}{1-xy} dx dy = \\frac{\\pi^2}{6}$$",
+	"Surround LaTeX with a dollar sign for inline style $\\zeta(2) = \\pi^2/6$, and two dollars for display.",
+	"$$\\int_0^1 \\int_0^1 \\frac{1}{1-xy} dx dy = \\frac{\\pi^2}{6}$$",
 	"",
 	"GitHub: https://github.com/AndrewBelt/hack.chat",
 	"Android apps: https://goo.gl/UkbKYy https://goo.gl/qasdSu",
@@ -49,11 +49,15 @@ var myNick = localStorageGet('my-nick')
 var myChannel = window.location.search.replace(/^\?/, '')
 var lastSent = [""]
 var lastSentPos = 0
+var myIgnores = []
+
+var ignoreTitle = ['Ignore this user', 'Accept messages from this user']
+var ignoreLabel = ['I', 'A']
 
 
 // Ping server every 50 seconds to retain WebSocket connection
 window.setInterval(function() {
-	send({cmd: 'ping'})
+	send({cmd: 'ping', randomdata: Math.random().toString(36).substring(7)})
 }, 50000)
 
 
@@ -103,7 +107,9 @@ var COMMANDS = {
 		if (ignoredUsers.indexOf(args.nick) >= 0) {
 			return
 		}
-		pushMessage(args)
+		if (myIgnores.indexOf(args.nick) == -1) {
+			pushMessage(args)
+		}
 	},
 	info: function(args) {
 		args.nick = '*'
@@ -131,6 +137,7 @@ var COMMANDS = {
 	onlineRemove: function(args) {
 		var nick = args.nick
 		userRemove(nick)
+		userUnignore(nick)
 		if ($('#joined-left').checked) {
 			pushMessage({nick: '*', text: nick + " left"})
 		}
@@ -153,6 +160,12 @@ function pushMessage(args) {
 	}
 	else if (args.nick == '*') {
 		messageEl.classList.add('info')
+	}
+	else if (args.text && args.text.indexOf("@" + myNick.split("#")[0] + " ") != -1) {
+		messageEl.classList.add('direct')
+	}
+	if (wasMentioned(args.text, myNick)) {
+		messageEl.classList.add('mentioned')
 	}
 
 	// Nickname
@@ -183,8 +196,8 @@ function pushMessage(args) {
 	var textEl = document.createElement('pre')
 	textEl.classList.add('text')
 
-	textEl.textContent = args.text || ''
-	textEl.innerHTML = textEl.innerHTML.replace(/(\?|https?:\/\/)\S+?(?=[,.!?:)]?\s|$)/g, parseLinks)
+	textEl.textContent = text || ''
+	textEl.innerHTML = textEl.innerHTML.replace(/(^|[\s\(\[\{\\\/\+-_\*\^&%#@])(\?[\S]+|https?:\/\/[\S]+\.[\w\d\-_,.!?:%#\/]*)/g, parseLinks)
 
 	if ($('#parse-latex').checked) {
 		// Temporary hotfix for \rule spamming, see https://github.com/Khan/KaTeX/issues/109
@@ -214,6 +227,17 @@ function pushMessage(args) {
 }
 
 
+function wasMentioned(text, nick) {
+	var pattern = "@"+nick
+	return text.replace(/[_=&\/\\#,+()$~%.'":*!?<>{}]/g, '')
+		.split(/\s/)
+		.filter(function(word) {
+			return word === pattern;
+		})
+		.length > 0;
+}
+
+
 function insertAtCursor(text) {
 	var input = $('#chatinput')
 	var start = input.selectionStart || 0
@@ -233,16 +257,16 @@ function send(data) {
 }
 
 
-function parseLinks(g0) {
+function parseLinks(g0, preLink, link) {
 	var a = document.createElement('a')
-	a.innerHTML = g0
+	a.innerHTML = link
 	var url = a.textContent
 	if (url[0] == '?') {
 		url = "/" + url
 	}
 	a.href = url
 	a.target = '_blank'
-	return a.outerHTML
+	return preLink + a.outerHTML
 }
 
 
@@ -425,16 +449,47 @@ $('#parse-latex').onchange = function(e) {
 var onlineUsers = []
 var ignoredUsers = []
 
+function getIgnoreLabel(nick) {
+	return myIgnores.indexOf(nick)==-1 ? ignoreLabel[0] : ignoreLabel[1];
+}
+
+function getIgnoreTitle(nick) {
+	return myIgnores.indexOf(nick)==-1 ? ignoreTitle[0] : ignoreTitle[1];
+}
+
 function userAdd(nick) {
 	var user = document.createElement('a')
 	user.textContent = nick
 	user.onclick = function(e) {
 		userInvite(nick)
 	}
+
+	var ignore = document.createElement('a')
+	ignore.textContent = getIgnoreLabel(nick)
+	ignore.title = getIgnoreTitle(nick)
+	ignore.style.float = 'right'
+	ignore.onclick = function() { userIgnore(ignore, nick); }
+
 	var userLi = document.createElement('li')
 	userLi.appendChild(user)
+	userLi.appendChild(ignore)
 	$('#users').appendChild(userLi)
 	onlineUsers.push(nick)
+}
+
+function userUnignore(nick) {
+	myIgnores.splice(myIgnores.indexOf(nick), 1)
+}
+
+function userIgnore(me, nick) {
+	var index = myIgnores.indexOf(nick)
+	if (index == -1) {
+		myIgnores.push(nick)
+	} else {
+		myIgnores.splice(index, 1)
+	}
+	me.textContent = getIgnoreLabel(nick);
+	me.title = getIgnoreTitle(nick);
 }
 
 function userRemove(nick) {
@@ -442,7 +497,7 @@ function userRemove(nick) {
 	var children = users.children
 	for (var i = 0; i < children.length; i++) {
 		var user = children[i]
-		if (user.textContent == nick) {
+		if (user.children[0].textContent == nick) {
 			users.removeChild(user)
 		}
 	}

@@ -5,3 +5,4 @@ node_modules/
 *.ipr
 *.iws
 config.json
+scrollback.txt
